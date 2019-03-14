@@ -1,2 +1,2 @@
 # HashMap
-My hash map realization
+My hash map implementation
