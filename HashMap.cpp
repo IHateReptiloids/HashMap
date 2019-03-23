@@ -4,11 +4,6 @@
 #include <stdexcept>
 #include <cmath>
 
-static const size_t init_size = 16;
-static const double max_ratio = 0.5;
-static const double min_ratio = 0.1;
-static const int grow_factor = 2;
-
 template<typename K, typename V, typename Hasher = std::hash<K>>
 class HashMap {
 public:
@@ -16,44 +11,28 @@ public:
     typedef typename std::list<std::pair<const K, V>>::const_iterator const_iterator;
 
 private:
+    const size_t INIT_SIZE = 16;
+    const double MAX_RATIO = 0.5;
+    const double MIN_RATIO = 0.1;
+    const int GROW_FACTOR = 2;
+
     size_t sz;
     std::list<std::pair<const K, V>> data;
     std::vector<iterator> pointers;
     Hasher hasher;
 
-    void reallocate(size_t new_size) {
-        std::list<std::pair<const K, V>> old_data(data);
-        data.clear();
-        pointers.assign(new_size, data.end());
-        for (const auto &i : old_data) {
-            size_t hash = hasher(i.first) % new_size;
-            data.insert(pointers[hash], i);
-            pointers[hash]--;
-        }
-    }
-
-    void __insert(std::pair<K, V> elem) {
-        sz++;
-        size_t hash = hasher(elem.first) % pointers.size();
-        data.insert(pointers[hash], elem);
-        pointers[hash]--;
-        if (sz / max_ratio > pointers.size()) {
-            reallocate(pointers.size() * grow_factor);
-        }
-    }
-
 public:
     HashMap(Hasher hash = Hasher())
         : sz(0)
-        , pointers(init_size, data.end())
+        , pointers(INIT_SIZE, data.end())
         , hasher(hash) {}
 
     template<typename Iter>
     HashMap(Iter begin, Iter end, Hasher hash = Hasher())
-        : sz(std::distance(begin, end))
-        , data(begin, end)
+        : data(begin, end)
         , hasher(hash) {
-        reallocate(static_cast<size_t>(ceil(sz / max_ratio + 1)));
+        sz = data.size();
+        reallocate(static_cast<size_t>(ceil(sz / MAX_RATIO + 1)));
     }
 
     HashMap(std::initializer_list<std::pair<K, V>> init_list, Hasher hash = Hasher())
@@ -83,32 +62,20 @@ public:
     }
 
     iterator find(K key) {
-        size_t hash = hasher(key) % pointers.size();
-        auto iter = pointers[hash];
-        while (iter != data.end() && hasher(iter->first) % pointers.size() == hash) {
-            if (iter->first == key) {
-                return iter;
-            }
-            iter++;
-        }
-        return data.end();
+        iterator ret = data.end();
+        find<iterator>(key, ret);
+        return ret;
     }
 
     const_iterator find(K key) const {
-        size_t hash = hasher(key) % pointers.size();
-        auto iter = pointers[hash];
-        while (iter != data.end() && hasher(iter->first) % pointers.size() == hash) {
-            if (iter->first == key) {
-                return iter;
-            }
-            iter++;
-        }
-        return data.end();
+        const_iterator ret = data.end();
+        find<const_iterator>(key, ret);
+        return ret;
     }
 
     void insert(std::pair<K, V> elem) {
         if (find(elem.first) == data.end()) {
-            __insert(elem);
+            no_check_insert(elem);
         }
     }
 
@@ -126,8 +93,8 @@ public:
             }
         }
         data.erase(iter);
-        if (sz / min_ratio < pointers.size()) {
-            reallocate(pointers.size() / grow_factor);
+        if (sz / MIN_RATIO < pointers.size()) {
+            reallocate(pointers.size() / GROW_FACTOR);
         }
     }
 
@@ -150,13 +117,13 @@ public:
     void clear() {
         sz = 0;
         data.clear();
-        pointers.assign(init_size, data.end());
+        pointers.assign(INIT_SIZE, data.end());
     }
 
     V& operator[](K key) {
         auto iter = find(key);
         if (iter == data.end()) {
-            __insert(std::make_pair(key, V()));
+            no_check_insert(std::make_pair(key, V()));
             return find(key)->second;
         }
         return iter->second;
@@ -168,5 +135,40 @@ public:
             throw std::out_of_range("");
         }
         return iter->second;
+    }
+
+private:
+    void reallocate(size_t new_size) {
+        std::list<std::pair<const K, V>> old_data(data);
+        data.clear();
+        pointers.assign(new_size, data.end());
+        for (const auto &i : old_data) {
+            size_t hash = hasher(i.first) % new_size;
+            data.insert(pointers[hash], i);
+            pointers[hash]--;
+        }
+    }
+
+    void no_check_insert(std::pair<K, V> elem) {
+        sz++;
+        size_t hash = hasher(elem.first) % pointers.size();
+        data.insert(pointers[hash], elem);
+        pointers[hash]--;
+        if (sz / MAX_RATIO > pointers.size()) {
+            reallocate(pointers.size() * GROW_FACTOR);
+        }
+    }
+
+    template<typename Iter>
+    void find(K key, Iter &ret) const {
+        size_t hash = hasher(key) % pointers.size();
+        auto iter = pointers[hash];
+        while (iter != data.end() && hasher(iter->first) % pointers.size() == hash) {
+            if (iter->first == key) {
+                ret = iter;
+                return;
+            }
+            iter++;
+        }
     }
 };
